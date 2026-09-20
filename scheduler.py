@@ -15,7 +15,8 @@ DAY_LABELS = (
     ("saturday", "S"),
     ("sunday", "U"),
 )
-CLASS_DAY_PENALTY = 180
+# One fewer class day outweighs up to 24 hours of extra weekly gaps.
+CLASS_DAY_PENALTY = 1_440
 CAMPUS = "Stillwater"
 EXCLUDED_SCHEDULE_TYPES = {"LAB"}
 MEETING_TYPE_NAMES = {"01": "lecture", "02": "lab"}
