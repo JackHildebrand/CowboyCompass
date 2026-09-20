@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from itertools import combinations, product
+from datetime import datetime, timedelta
 
 
 DAY_LABELS = (
@@ -11,6 +12,8 @@ DAY_LABELS = (
     ("wednesday", "W"),
     ("thursday", "R"),
     ("friday", "F"),
+    ("saturday", "S"),
+    ("sunday", "U"),
 )
 CLASS_DAY_PENALTY = 180
 CAMPUS = "Stillwater"
@@ -37,15 +40,17 @@ def instructional_meetings(section: dict):
 
 def is_eligible_section(section: dict) -> bool:
     """Return whether a section can be offered as a Stillwater option."""
-    if section.get("scheduleTypeDescription") in EXCLUDED_SCHEDULE_TYPES:
+    if (section.get("scheduleTypeDescription") or "").upper() in EXCLUDED_SCHEDULE_TYPES:
         return False
 
     meetings = section.get("meetingsFaculty") or []
     if not meetings:
         return False
 
-    first_meeting_time = meetings[0].get("meetingTime") or {}
-    return first_meeting_time.get("campusDescription") == CAMPUS
+    return any(
+        (meeting.get("meetingTime") or {}).get("campusDescription") == CAMPUS
+        for meeting in instructional_meetings(section)
+    )
 
 
 def find_course_sections(
@@ -94,7 +99,7 @@ def generate_schedules(
 
 def time_to_minutes(raw_time: str | None) -> int | None:
     """Convert OSU's HHMM time string to minutes after midnight."""
-    if not isinstance(raw_time, str) or len(raw_time) < 4:
+    if not isinstance(raw_time, str) or len(raw_time) != 4:
         return None
     try:
         hour = int(raw_time[:2])
@@ -107,7 +112,7 @@ def time_to_minutes(raw_time: str | None) -> int | None:
 
 
 def meeting_times_overlap(first: dict, second: dict) -> bool:
-    """Return whether two meetings overlap on at least one weekday."""
+    """Check all shared days and the dates on which both meetings occur."""
     first_time = first.get("meetingTime") or {}
     second_time = second.get("meetingTime") or {}
     shared_day = any(
@@ -123,6 +128,25 @@ def meeting_times_overlap(first: dict, second: dict) -> bool:
     second_end = time_to_minutes(second_time.get("endTime"))
     if None in (first_start, first_end, second_start, second_end):
         return False
+
+    if first_start >= first_end or second_start >= second_end:
+        return False
+
+    # Missing dates retain the conservative weekly conflict behavior.
+    try:
+        start_date = max(datetime.strptime(t["startDate"], "%m/%d/%Y").date()
+                         for t in (first_time, second_time))
+        end_date = min(datetime.strptime(t["endDate"], "%m/%d/%Y").date()
+                       for t in (first_time, second_time))
+    except (KeyError, TypeError, ValueError):
+        pass
+    else:
+        if not any(
+            first_time.get(day) and second_time.get(day)
+            and start_date + timedelta(days=(index - start_date.weekday()) % 7) <= end_date
+            for index, (day, _) in enumerate(DAY_LABELS)
+        ):
+            return False
 
     # Strict inequalities allow back-to-back classes with no overlap.
     return first_start < second_end and second_start < first_end

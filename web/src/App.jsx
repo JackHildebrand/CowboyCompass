@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import './App.css'
 
-const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api/schedules'
 const TERM_OPTIONS = [
   { value: 'fall-2026', label: 'Fall 2026' },
-  { value: 'spring-2027', label: 'Spring 2027 (coming soon)', disabled: true },
+  { value: 'spring-2027', label: 'Spring 2027' },
 ]
 const classesForDay = (schedule, day) =>
   schedule.classes[day.toLowerCase()] || schedule.classes[day] || []
@@ -16,6 +16,7 @@ const crnsForSchedule = (schedule) => {
   })
   return [...sections]
 }
+const visibleDays = (schedule) => WEEKDAYS.filter((day) => !['Saturday', 'Sunday'].includes(day) || classesForDay(schedule, day).length > 0)
 const courseColor = (course) => [...course].reduce((total, character) => total + character.charCodeAt(0), 0) % 6
 const rmpSearchUrl = (professor) => `https://www.ratemyprofessors.com/search/professors?q=${encodeURIComponent(professor)}`
 const scoreColor = (score, schedules) => {
@@ -31,48 +32,6 @@ const formatCourse = (value) => {
   const match = compact.match(/^([A-Z]+)(.+)$/)
   return match ? `${match[1]} ${match[2]}` : compact
 }
-
-const SAMPLE_SCHEDULES = [
-  {
-    score: 400,
-    gap: 310,
-    days: 3,
-    classes: {
-      Monday: [{ time: '1:30–2:20 PM', course: 'CS 1113', title: 'Intro to Computer Science', room: 'Engineering South 101', professor: 'Al Buhamood' }],
-      Tuesday: [
-        { time: '12:00–1:15 PM', course: 'CS 1113', title: 'Intro to Computer Science', room: 'Classroom Building 313', professor: 'Al Buhamood' },
-        { time: '3:30–4:20 PM', course: 'PHYS 1114', title: 'General Physics', room: 'Physical Sciences 141', professor: 'Edwards, Melissa' },
-      ],
-      Wednesday: [],
-      Thursday: [{ time: '12:00–1:15 PM', course: 'CS 1113', title: 'Intro to Computer Science', room: 'Classroom Building 313', professor: 'Al Buhamood' }],
-      Friday: [],
-    },
-  },
-  {
-    score: 425,
-    gap: 275,
-    days: 4,
-    classes: {
-      Monday: [{ time: '11:30 AM–12:20 PM', course: 'PHYS 1114', title: 'General Physics', room: 'Physical Sciences 141', professor: 'Edwards, Melissa' }],
-      Tuesday: [{ time: '12:00–1:15 PM', course: 'CS 1113', title: 'Intro to Computer Science', room: 'Classroom Building 313', professor: 'Al Buhamood' }],
-      Wednesday: [{ time: '1:30–2:20 PM', course: 'PHYS 1114', title: 'General Physics', room: 'Physical Sciences 141', professor: 'Edwards, Melissa' }],
-      Thursday: [{ time: '12:00–1:15 PM', course: 'CS 1113', title: 'Intro to Computer Science', room: 'Classroom Building 313', professor: 'Al Buhamood' }],
-      Friday: [],
-    },
-  },
-  {
-    score: 510,
-    gap: 330,
-    days: 3,
-    classes: {
-      Monday: [{ time: '3:30–4:20 PM', course: 'PHYS 1114', title: 'General Physics', room: 'Physical Sciences 141', professor: 'Edwards, Melissa' }],
-      Tuesday: [{ time: '12:00–1:15 PM', course: 'CS 1113', title: 'Intro to Computer Science', room: 'Classroom Building 313', professor: 'Al Buhamood' }],
-      Wednesday: [],
-      Thursday: [{ time: '12:00–1:15 PM', course: 'CS 1113', title: 'Intro to Computer Science', room: 'Classroom Building 313', professor: 'Al Buhamood' }],
-      Friday: [{ time: '9:30–11:20 AM', course: 'PHYS 1114', title: 'General Physics lab', room: 'Physical Sciences 051', professor: 'Edwards, Melissa' }],
-    },
-  },
-]
 
 function App() {
   const [term, setTerm] = useState('fall-2026')
@@ -153,7 +112,7 @@ function App() {
 
           <label className="term-select-label" htmlFor="term-select">Term</label>
           <div className="term-select-wrap">
-            <select id="term-select" className="term-select" value={term} onChange={(event) => setTerm(event.target.value)}>
+            <select id="term-select" className="term-select" value={term} onChange={(event) => { setTerm(event.target.value); setSchedules([]); setResultCount(0); setError(''); setCopiedCrn('') }} disabled={isLoading}>
               {TERM_OPTIONS.map((option) => <option key={option.value} value={option.value} disabled={option.disabled}>{option.label}</option>)}
             </select>
             <span className="term-select-arrow" aria-hidden="true" />
@@ -162,7 +121,7 @@ function App() {
           <form className="course-form" onSubmit={addCourse}>
             <label htmlFor="course-input">Requested courses</label>
             <div className="input-row">
-              <input id="course-input" value={courseInput} onChange={(event) => setCourseInput(event.target.value)} placeholder="e.g. MATH 2143" autoComplete="off" />
+              <input id="course-input" value={courseInput} onChange={(event) => setCourseInput(event.target.value)} placeholder="e.g. MATH 2144" autoComplete="off" />
               <button type="submit" className="add-button" aria-label="Add course">+</button>
             </div>
           </form>
@@ -214,13 +173,13 @@ function App() {
                   </div>
                 </div>
 
-                <div className="calendar">
-                  {WEEKDAYS.map((day) => (
+                <div className="calendar" style={{ '--calendar-days': visibleDays(schedule).length }}>
+                  {visibleDays(schedule).map((day) => (
                     <div className="day-column" key={day}>
                       <div className="day-name">{day.slice(0, 3)}</div>
-                      {classesForDay(schedule, day).length === 0 ? <div className="no-class">—</div> : classesForDay(schedule, day).map((item) => (
-                        <div className={`class-block course-color-${courseColor(item.course)}`} key={`${day}-${item.time}-${item.course}`}>
-                          <time>{item.time}</time><strong>{item.course}</strong><span>{item.title}</span><span className="class-meta">{item.room}</span>{item.professor === 'TBA' ? <span className="class-meta">TBA</span> : <a className="class-meta professor-link" href={rmpSearchUrl(item.professor)} target="_blank" rel="noreferrer">{item.professor} ↗</a>}<span className="class-meta">{item.meetingType} · CRN {item.crn}</span>
+                      {classesForDay(schedule, day).length === 0 ? <div className="no-class">—</div> : classesForDay(schedule, day).map((item, meetingIndex) => (
+                        <div className={`class-block course-color-${courseColor(item.course)}`} key={`${day}-${item.crn}-${meetingIndex}`}>
+                          <time>{item.time}</time><strong>{item.course}</strong><span>{item.title}</span><span className="class-meta">{item.room}</span>{item.professor === 'TBA' ? <span className="class-meta">TBA</span> : <a className="class-meta professor-link" href={rmpSearchUrl(item.professor)} target="_blank" rel="noreferrer">{item.professor} ↗</a>}<span className="class-meta">{item.meetingType} · CRN {item.crn}</span>{item.startDate && item.endDate && <span className="class-meta">{item.startDate}–{item.endDate}</span>}
                         </div>
                       ))}
                     </div>

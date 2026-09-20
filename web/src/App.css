@@ -57,7 +57,7 @@ h2 { margin-top: 8px; color: #18231e; font-size: 30px; letter-spacing: -.05em; }
 .score { margin-left: auto; text-align: right; }
 .score span { display: block; color: #758278; font: 500 10px 'DM Mono', monospace; text-transform: uppercase; letter-spacing: .1em; }
 .score strong { display: block; margin-top: 2px; color: #dd6b3e; font: 500 23px 'DM Mono', monospace; }
-.calendar { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.calendar { display: grid; grid-template-columns: repeat(var(--calendar-days, 5), minmax(0, 1fr)); }
 .day-column { min-height: 176px; padding: 14px 12px; border-right: 1px solid #e2e9e0; }
 .day-column:last-child { border-right: 0; }
 .day-name { margin-bottom: 12px; color: #758278; font: 500 11px 'DM Mono', monospace; text-transform: uppercase; }

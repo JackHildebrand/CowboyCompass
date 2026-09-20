@@ -2,11 +2,7 @@
 
 from __future__ import annotations
 
-import json
-import secrets
-import time
-from pathlib import Path
-from typing import Any
+import argparse
 
 from scheduler import (
     DAY_LABELS,
@@ -22,155 +18,9 @@ from scheduler import (
     time_to_minutes,
 )
 
-BASE_URL = "https://studentregistrationssb.okstate.edu/StudentRegistrationSsb/ssb"
-TERM = "202660"  # Spring 2026
-REQUESTED_PAGE_SIZE = 1_000
-OUTPUT_PATH = Path(__file__).with_name("fall_2026_sections.json")
-PARTIAL_OUTPUT_PATH = Path(__file__).with_name("fall_2026_sections.partial.json")
-REQUEST_TIMEOUT_SECONDS = 30
+from course_data import DEFAULT_TERM, TERMS, TERM_DATA_PATHS, load_sections
+
 TOP_SCHEDULES_TO_DISPLAY = 10
-
-
-def require_success(response: Any, step: str) -> None:
-    """Raise a concise error when OSU does not accept a request."""
-    import requests
-
-    try:
-        response.raise_for_status()
-    except requests.HTTPError as error:
-        preview = response.text[:500].strip()
-        raise RuntimeError(f"{step} failed ({response.status_code}): {preview}") from error
-
-
-def make_unique_session_id() -> str:
-    """Match the browser's non-persistent search-ID shape."""
-    base36 = "0123456789abcdefghijklmnopqrstuvwxyz"
-    random_prefix = "".join(secrets.choice(base36) for _ in range(5))
-    return random_prefix + str(int(time.time() * 1_000))
-
-
-def initialize_search(session: Any, unique_session_id: str) -> None:
-    """Establish the public, temporary search context required by OSU."""
-    response = session.get(
-        f"{BASE_URL}/term/termSelection",
-        params={"mepCode": "OSU", "mode": "search"},
-        timeout=REQUEST_TIMEOUT_SECONDS,
-    )
-    require_success(response, "Term selection")
-
-    response = session.post(
-        f"{BASE_URL}/term/search",
-        params={"mode": "search"},
-        data={"term": TERM, "uniqueSessionId": unique_session_id},
-        timeout=REQUEST_TIMEOUT_SECONDS,
-    )
-    require_success(response, "Term search context")
-
-
-def fetch_page(session: Any, unique_session_id: str, offset: int) -> dict:
-    """Fetch one result page using the initialized temporary session."""
-    import requests
-
-    response = session.get(
-        f"{BASE_URL}/searchResults/searchResults",
-        params={
-            "txt_term": TERM,
-            "startDatepicker": "",
-            "endDatepicker": "",
-            "uniqueSessionId": unique_session_id,
-            "pageOffset": offset,
-            "pageMaxSize": REQUESTED_PAGE_SIZE,
-            "sortColumn": "subjectDescription",
-            "sortDirection": "asc",
-        },
-        timeout=REQUEST_TIMEOUT_SECONDS,
-    )
-    require_success(response, f"Search-results page at offset {offset}")
-    try:
-        return response.json()
-    except requests.JSONDecodeError as error:
-        raise RuntimeError("OSU returned a non-JSON search response.") from error
-
-
-def load_partial_sections() -> list[dict]:
-    """Load an interrupted download so the next run can resume."""
-    if not PARTIAL_OUTPUT_PATH.exists():
-        return []
-
-    try:
-        payload = json.loads(PARTIAL_OUTPUT_PATH.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as error:
-        raise RuntimeError(f"Could not read {PARTIAL_OUTPUT_PATH.name}.") from error
-
-    if not isinstance(payload, dict):
-        raise RuntimeError(f"{PARTIAL_OUTPUT_PATH.name} has an invalid format.")
-    if payload.get("term") != TERM or not isinstance(payload.get("sections"), list):
-        raise RuntimeError(f"{PARTIAL_OUTPUT_PATH.name} does not match the configured term.")
-    return payload["sections"]
-
-
-def save_partial_sections(sections: list[dict], expected_total: int) -> None:
-    """Atomically checkpoint successful pages without session credentials."""
-    temporary_path = PARTIAL_OUTPUT_PATH.with_suffix(".tmp")
-    payload = {"term": TERM, "totalCount": expected_total, "sections": sections}
-    temporary_path.write_text(json.dumps(payload), encoding="utf-8")
-    temporary_path.replace(PARTIAL_OUTPUT_PATH)
-
-
-def fetch_all_sections() -> list[dict]:
-    """Download and return every section from OSU's public search."""
-    import requests
-
-    with requests.Session() as session:
-        session.headers.update({"User-Agent": "Mozilla/5.0", "Accept": "*/*"})
-        unique_session_id = make_unique_session_id()
-        sections = load_partial_sections()
-        offset = len(sections)
-        expected_total: int | None = None
-
-        initialize_search(session, unique_session_id)
-        if sections:
-            print(f"Resuming from {offset:,} checkpointed sections.")
-
-        while True:
-            payload = fetch_page(session, unique_session_id, offset)
-            if expected_total is None:
-                expected_total = int(payload.get("totalCount") or 0)
-                print(f"OSU reports {expected_total:,} sections.")
-
-            page = payload.get("data") or []
-            if not page:
-                break
-
-            sections.extend(page)
-            offset += len(page)
-            print(f"Downloaded {len(sections):,} of {expected_total:,} sections.")
-            save_partial_sections(sections, expected_total)
-            if len(sections) >= expected_total:
-                break
-
-        if expected_total is not None and len(sections) != expected_total:
-            raise RuntimeError(
-                f"Expected {expected_total:,} sections but received {len(sections):,}. "
-                "No output file was written."
-            )
-        return sections
-
-
-def load_sections(path: Path | None = None) -> list[dict]:
-    """Load cached section data and explain common file errors clearly."""
-    path = path or OUTPUT_PATH
-    try:
-        with path.open(encoding="utf-8") as file:
-            sections = json.load(file)
-    except FileNotFoundError:
-        raise SystemExit(f"Course data not found. Place {path.name} next to this script.")
-    except json.JSONDecodeError:
-        raise SystemExit(f"Could not read {path.name}: invalid JSON.")
-
-    if not isinstance(sections, list):
-        raise SystemExit(f"Could not read {path.name}: expected a list of sections.")
-    return sections
 
 
 def format_time(raw_time: str | None) -> str | None:
@@ -347,7 +197,10 @@ def display_course_options(
 
 def main() -> None:
     """Run the interactive course lookup workflow."""
-    all_sections = load_sections()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--term", choices=TERMS, default=DEFAULT_TERM)
+    args = parser.parse_args()
+    all_sections = load_sections(TERM_DATA_PATHS[args.term], args.term)
     courses = get_course_requests()
     course_options = build_course_options(all_sections, courses)
     display_course_options(courses, course_options)

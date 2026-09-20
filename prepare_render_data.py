@@ -1,16 +1,17 @@
-"""Download the current OSU section data while Render builds the API."""
-
+"""Download complete OSU datasets; by default prepare every supported term."""
 from __future__ import annotations
 
-import json
-
-from OSU_Class_Optimizer import OUTPUT_PATH, fetch_all_sections
+import argparse
+from course_data import TERMS, import_term
 
 
 def main() -> None:
-    sections = fetch_all_sections()
-    OUTPUT_PATH.write_text(json.dumps(sections), encoding="utf-8")
-    print(f"Saved {len(sections):,} sections to {OUTPUT_PATH.name}.")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--term", choices=TERMS, action="append", help="Import only this term (repeatable).")
+    args = parser.parse_args()
+    for term in args.term or TERMS:
+        path = import_term(term)
+        print(f"Saved {path.name}.")
 
 
 if __name__ == "__main__":

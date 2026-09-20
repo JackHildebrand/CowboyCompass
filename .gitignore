@@ -1,5 +1,9 @@
 # OSU course data (generated/cache files)
-*.json
+/*_sections.json
+/*_sections.meta.json
+/*_sections.partial.json
+/*_sections.json.tmp
+/*_sections.meta.json.tmp
 
 # Python
 __pycache__/
