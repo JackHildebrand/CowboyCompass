@@ -108,6 +108,51 @@ class SchedulerTests(unittest.TestCase):
                 expected = [schedule for schedule in schedules if adjacent in schedule]
                 self.assertEqual(remove_conflicting_schedules(schedules), expected)
 
+    def test_campus_filter_checks_later_instructional_meetings(self):
+        first = meeting("0900", "0950", monday=True, campusDescription="Off-Campus")
+        later = meeting("1300", "1450", tuesday=True, campusDescription="Stillwater")
+        item = {"subjectCourse": "CS1113", "meetingsFaculty": [first, later]}
+        for order in permutations([first, later]):
+            item["meetingsFaculty"] = list(order)
+            self.assertEqual(build_course_options([item], ["CS1113"]), [[item]])
+        later["meetingTime"]["meetingType"] = "EXCE"
+        self.assertEqual(build_course_options([item], ["CS1113"]), [[]])
+
+    def test_standalone_labs_are_excluded_without_dropping_combined_sections(self):
+        item = section("PHYS1114", "A", [meeting("0900", "1000", monday=True)])
+        for kind in ("LAB", "Lab", "lab"):
+            item["scheduleTypeDescription"] = kind
+            self.assertEqual(build_course_options([item], ["PHYS1114"]), [[]])
+        item["scheduleTypeDescription"] = "Combined lecture and lab"
+        self.assertEqual(build_course_options([item], ["PHYS1114"]), [[item]])
+
+    def test_weekend_conflicts_gaps_and_class_days(self):
+        first = section("CS1113", "A", [meeting("0900", "1000", saturday=True)])
+        overlap = section("MATH2143", "B", [meeting("0930", "1030", saturday=True)])
+        later = section("MATH2143", "C", [meeting("1030", "1130", saturday=True)])
+        self.assertTrue(sections_conflict(first, overlap))
+        self.assertEqual(calculate_total_gap((first, later)), 30)
+        self.assertEqual(score_schedule((first, later)), 210)
+
+    def test_meetings_must_share_an_actual_date(self):
+        first = section("CS1113", "A", [meeting("0900", "1000", monday=True, startDate="01/11/2027", endDate="03/05/2027")])
+        for start, end, expected in [
+            ("03/08/2027", "04/30/2027", False),
+            ("03/01/2027", "04/30/2027", True),
+            ("03/02/2027", "03/05/2027", False),
+            (None, None, True),
+        ]:
+            second = section("MATH2143", "B", [meeting("0930", "1030", monday=True, startDate=start, endDate=end)])
+            for pair in ((first, second), (second, first)):
+                with self.subTest(start=start, end=end):
+                    self.assertEqual(sections_conflict(*pair), expected)
+
+    def test_invalid_intervals_do_not_create_conflicts(self):
+        first = section("CS1113", "A", [meeting("0900", "1000", monday=True)])
+        for start, end in [("0930", "0930"), ("1000", "0900"), ("09300", "1000")]:
+            second = section("MATH2143", "B", [meeting(start, end, monday=True)])
+            self.assertFalse(sections_conflict(first, second))
+
     def test_gap_does_not_cross_weekdays(self):
         monday = section("CS1113", "A", [meeting("0900", "1000", monday=True)])
         tuesday = section("MATH2143", "B", [meeting("1500", "1600", tuesday=True)])

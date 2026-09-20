@@ -5,8 +5,9 @@ from __future__ import annotations
 import json
 import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 from typing import Any
+
+from course_data import TERM_DATA_PATHS, load_sections
 
 from scheduler import (
     DAY_LABELS,
@@ -26,17 +27,7 @@ from scheduler import (
 HOST = os.environ.get("HOST", "0.0.0.0")
 PORT = int(os.environ.get("PORT", "8000"))
 ALLOWED_ORIGIN = os.environ.get("ALLOWED_ORIGIN", "http://localhost:5173")
-DATA_PATH = Path(__file__).with_name("fall_2026_sections.json")
-TERM_DATA_PATHS = {"fall-2026": DATA_PATH}
 TOP_SCHEDULES = 10
-
-
-def load_sections(data_path: Path = DATA_PATH) -> list[dict]:
-    with data_path.open(encoding="utf-8") as file:
-        sections = json.load(file)
-    if not isinstance(sections, list):
-        raise ValueError("Course data must contain a list of sections.")
-    return sections
 
 
 def normalize_course(course: Any) -> str:
@@ -85,6 +76,8 @@ def serialize_schedule(schedule: tuple[dict, ...]) -> dict:
                 "professor": professor,
                 "meetingType": meeting_type,
                 "crn": str(crn),
+                "startDate": meeting_time.get("startDate"),
+                "endDate": meeting_time.get("endDate"),
                 "sortStart": start if start is not None else 24 * 60,
             }
             for day, _ in DAY_LABELS:
@@ -127,12 +120,13 @@ def create_schedule_response(courses: list[str], term: str = "fall-2026") -> dic
     except KeyError as error:
         raise ValueError(f"That term is not available yet: {term}") from error
 
-    all_sections = load_sections(data_path)
+    all_sections = load_sections(data_path, term)
     course_options = build_course_options(all_sections, courses)
     all_schedules = generate_schedules(course_options)
     valid_schedules = remove_conflicting_schedules(all_schedules)
     ranked_schedules = rank_schedules(valid_schedules)
     return {
+        "term": term,
         "requestedCourses": courses,
         "matchCounts": [len(options) for options in course_options],
         "possibleSchedules": len(all_schedules),
