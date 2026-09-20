@@ -142,7 +142,7 @@ function App() {
 
           <div className="scoring-note">
             <span className="note-dot" aria-hidden="true" />
-            <div><strong>How ranking works</strong><p>Less idle time comes first. Schedules with fewer class days receive a small bonus.</p></div>
+            <div><strong>How ranking works</strong><p>Fewer class days are strongly preferred. One fewer day outweighs up to 24 hours of extra weekly gaps; among schedules with the same number of days, shorter gaps rank higher.</p></div>
           </div>
         </aside>
 

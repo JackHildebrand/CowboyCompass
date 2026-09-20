@@ -132,7 +132,7 @@ class SchedulerTests(unittest.TestCase):
         later = section("MATH2143", "C", [meeting("1030", "1130", saturday=True)])
         self.assertTrue(sections_conflict(first, overlap))
         self.assertEqual(calculate_total_gap((first, later)), 30)
-        self.assertEqual(score_schedule((first, later)), 210)
+        self.assertEqual(score_schedule((first, later)), 1470)
 
     def test_meetings_must_share_an_actual_date(self):
         first = section("CS1113", "A", [meeting("0900", "1000", monday=True, startDate="01/11/2027", endDate="03/05/2027")])
@@ -165,6 +165,20 @@ class SchedulerTests(unittest.TestCase):
         ranked = rank_schedules([(early, far), (early, close)])
         self.assertEqual(ranked, [(early, close), (early, far)])
         self.assertLess(score_schedule(ranked[0]), score_schedule(ranked[1]))
+
+    def test_two_days_with_long_gaps_beat_three_or_five_compact_days(self):
+        # Same two requested courses; two-day option has 10 hours of
+        # weekly gaps, while the three/five-day alternatives have none.
+        first = section("CS1113", "A", [meeting("0800", "0900", monday=True, tuesday=True)])
+        two_days = section("MATH2144", "B", [meeting("1400", "1500", monday=True, tuesday=True)])
+        three_days = section("MATH2144", "C", [meeting("0900", "1000", monday=True, tuesday=True, wednesday=True)])
+        five_days = section("MATH2144", "D", [meeting("0900", "1000", monday=True, tuesday=True, wednesday=True, thursday=True, friday=True)])
+        schedules = [(first, five_days), (first, three_days), (first, two_days)]
+        self.assertEqual(calculate_total_gap((first, two_days)), 600)
+        self.assertEqual(rank_schedules(schedules), list(reversed(schedules)))
+        self.assertEqual(score_schedule((first, two_days)), 3480)
+        self.assertEqual(score_schedule((first, three_days)), 4320)
+        self.assertEqual(score_schedule((first, five_days)), 7200)
 
     def test_common_exams_are_ignored(self):
         class_meeting = meeting("0900", "0950", monday=True)

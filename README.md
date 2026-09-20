@@ -6,7 +6,7 @@ An intelligent course schedule optimizer for Oklahoma State University students.
 
 Cowboy Compass helps students find better class schedules by analyzing available course sections and ranking possible schedules based on their preferences.
 
-The primary goal is to minimize the amount of time students spend waiting between classes while respecting required courses and scheduling constraints.
+The primary ranking preference is to concentrate classes into fewer days while respecting required courses and scheduling constraints. The score is weekly gap minutes + 1,440 × class days (lower is better). Saving one class day outweighs up to 24 hours of extra weekly gaps; schedules with equal day counts are ordered by their gaps. This is a strong weighted preference, not an absolute day-count rule.
 
 ## Current Features
 
